@@ -4,6 +4,10 @@ on:
   push:
     branches: [ "main" ]
   workflow_dispatch:
+  schedule:
+    # Daily at 06:00 UTC. Skips automatically if the upstream version
+    # is already published (see "Check if image already exists" step).
+    - cron: '0 6 * * *'
 
 env:
   REGISTRY: ghcr.io
@@ -27,7 +31,26 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Bazarr version: $VERSION"
 
+      - name: Check if image already exists for this version
+        id: check
+        run: |
+          VERSION="${{ steps.bazarr_version.outputs.version }}"
+          TOKEN=$(curl -fsSL "https://ghcr.io/token?scope=repository:${{ github.repository }}:pull" | jq -r .token)
+          HTTP=$(curl -sSL -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.oci.image.index.v1+json" \
+            -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+            "https://ghcr.io/v2/${{ github.repository }}/manifests/$VERSION")
+          if [ "$HTTP" = "200" ]; then
+            echo "needs_build=false" >> $GITHUB_OUTPUT
+            echo "::notice::Version $VERSION already published — skipping build."
+          else
+            echo "needs_build=true" >> $GITHUB_OUTPUT
+            echo "::notice::Version $VERSION not yet published (HTTP $HTTP) — will build."
+          fi
+
       - name: Log in to GitHub Container Registry
+        if: github.event_name != 'schedule' || steps.check.outputs.needs_build == 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -35,6 +58,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata for Docker
+        if: github.event_name != 'schedule' || steps.check.outputs.needs_build == 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -44,9 +68,11 @@ jobs:
             type=raw,value=${{ steps.bazarr_version.outputs.version }}
 
       - name: Set up Docker Buildx
+        if: github.event_name != 'schedule' || steps.check.outputs.needs_build == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push Docker image
+        if: github.event_name != 'schedule' || steps.check.outputs.needs_build == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
