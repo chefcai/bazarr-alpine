@@ -36,14 +36,18 @@ RUN apk add --no-cache \
         py3-lxml \
         py3-numpy \
         py3-pillow \
-        py3-webrtcvad \
-    && apk add --no-cache --virtual .build-deps curl unzip \
+    && apk add --no-cache --virtual .build-deps curl unzip py3-pip \
     && addgroup -g 13000 bazarr \
     && adduser -D -u 13001 -G bazarr bazarr \
     && mkdir -p /app /config /media \
     && curl -fsSL "https://github.com/morpheus65535/bazarr/releases/download/${BAZARR_VERSION}/bazarr.zip" -o /tmp/bazarr.zip \
     && unzip -q /tmp/bazarr.zip -d /app \
     && rm /tmp/bazarr.zip \
+    # webrtcvad is the only pip dep we still need — Alpine doesn't package it.
+    # The wheel is ~86KB; --break-system-packages installs into the system
+    # python's site-packages alongside apk's py3-* packages.
+    && pip install --no-cache-dir --no-compile --break-system-packages \
+         webrtcvad-wheels \
     # Strip __pycache__ — regenerated at first import, dead weight in image.
     && find /app /usr/lib/python3* -type d -name __pycache__ -prune -exec rm -rf {} + \
     # Strip tests/docs/examples from vendored libs.
