@@ -12,9 +12,7 @@ FROM alpine:3.21
 
 ARG BAZARR_VERSION
 
-ENV PUID=13001 \
-    PGID=13000 \
-    TZ=America/New_York \
+ENV TZ=UTC \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
@@ -36,6 +34,7 @@ RUN apk add --no-cache \
         py3-lxml \
         py3-numpy \
         py3-pillow \
+        su-exec \
     && apk add --no-cache --virtual .build-deps curl unzip py3-pip \
     && addgroup -g 13000 bazarr \
     && adduser -D -u 13001 -G bazarr bazarr \
@@ -57,9 +56,15 @@ RUN apk add --no-cache \
     && chown -R bazarr:bazarr /app /config /media \
     && apk del .build-deps
 
-USER bazarr
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# NOTE: intentionally stays as root here -- entrypoint.sh drops to
+# PUID:PGID (default 1000:1000) via su-exec at container start. See
+# https://github.com/chefcai/bazarr-alpine/issues/1
 WORKDIR /app
 
 EXPOSE 6767
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python3", "/app/bazarr.py", "--no-update", "--config", "/config"]
