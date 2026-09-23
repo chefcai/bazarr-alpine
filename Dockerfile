@@ -25,6 +25,15 @@ ARG FFMPEG_VERSION=7.1.1
 RUN apk add --no-cache build-base nasm pkgconf curl xz zlib-dev zlib-static
 WORKDIR /src
 RUN curl -fsSL "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" | tar xJ --strip-components=1
+# NOTE: ffmpeg's --enable-muxer/--enable-decoder configure component names
+# do not always match the runtime codec/format name reported by ffprobe:
+#   - raw PCM s16le output is muxer component "pcm_s16le" (CONFIG_PCM_S16LE_MUXER),
+#     even though the runtime format name (and ffsubsync's `-f s16le`) is "s16le".
+#   - the MP4 3GPP timed-text subtitle decoder is component "movtext"
+#     (CONFIG_MOVTEXT_DECODER), even though ffprobe reports codec_name=mov_text.
+# Using the wrong (runtime) name here does NOT fail the build -- configure
+# just silently drops the unrecognized component -- so this needs testing,
+# not just a green build. See HOMELAB-101 test notes.
 RUN ./configure \
         --prefix=/opt/ffmpeg \
         --pkg-config-flags=--static \
@@ -36,8 +45,8 @@ RUN ./configure \
         --disable-everything \
         --enable-protocol=file,pipe \
         --enable-demuxer=matroska,mov,avi,mpegts,mpegps,ogg,flv,asf,mp3,aac,ac3,eac3,dts,truehd,flac,wav,srt,ass,webvtt \
-        --enable-muxer=s16le,wav,srt,ass,webvtt,sup,matroska,null \
-        --enable-decoder=aac,aac_latm,ac3,eac3,dca,truehd,mlp,flac,opus,vorbis,mp3,mp3float,mp2,alac,wmav2,wmapro,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s32le,pcm_f32le,pcm_bluray,pcm_dvd,ass,ssa,subrip,srt,webvtt,mov_text,text \
+        --enable-muxer=pcm_s16le,wav,srt,ass,webvtt,sup,matroska,null \
+        --enable-decoder=aac,aac_latm,ac3,eac3,dca,truehd,mlp,flac,opus,vorbis,mp3,mp3float,mp2,alac,wmav2,wmapro,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s32le,pcm_f32le,pcm_bluray,pcm_dvd,ass,ssa,subrip,srt,webvtt,movtext,text \
         --enable-encoder=pcm_s16le,subrip,srt,ass,ssa,webvtt \
         --enable-parser=aac,aac_latm,ac3,dca,mlp,flac,mpegaudio,opus,vorbis,h264,hevc,av1,vp9,mpeg4video,mpegvideo \
         --enable-bsf=null \
